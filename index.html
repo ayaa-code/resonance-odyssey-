@@ -1036,6 +1036,7 @@
             try {
                 const docRef = await addDoc(collection(db, "game_results"), {
                     name: playerName,
+                    score: state.score,
                     timestamp: new Date()
                 });
                 console.log("Document written with ID: ", docRef.id);
@@ -1142,6 +1143,22 @@
         </div>
     </div>
 
+    <!-- CITY STAGE OVERLAY -->
+    <div id="city-overlay" class="screen-overlay hidden">
+        <div class="content-card">
+            <div id="city-header">
+                <h2 id="city-name"></h2>
+                <div id="city-image"></div>
+                <p id="city-narasi"></p>
+            </div>
+            <div id="city-challenge">
+                <h3>Tantangan Kota</h3>
+                <div id="challenge-content"></div>
+            </div>
+            <button class="btn-gold" id="btn-back-to-board" onclick="backToBoard()">Kembali ke Papan</button>
+        </div>
+    </div>
+
     <script>
         const charAssets = {
             jawa: `<img src="https://raw.githubusercontent.com/AYAA-lab/Game-Resonance-Odyssey/4d1f20624072c139e13a3200d17f9d7947814b12/JAWA.png" style="width: 100%; height: auto; max-width: 120px; display: block; margin: 0 auto;" alt="JAWA"/>`,
@@ -1199,6 +1216,7 @@
             playerName: '',
             idx: 0,
             lives: 5,
+            score: 0,
             charId: '',
             active: false,
             isMoving: false,
@@ -1408,90 +1426,60 @@
             }, TRAVEL_DURATION);
         }
 
-        function showQuiz() {
-            // Hentikan musik perjalanan saat quiz muncul
+        function showCity(cityIdx) {
+            // Hentikan musik perjalanan saat masuk kota
             if (state.currentAudio) {
                 state.currentAudio.pause();
                 state.currentAudio.currentTime = 0;
             }
-            
-            state.currentQuiz = cityQuestions[state.idx];
-            
-            if (!state.currentQuiz) {
-                state.isMoving = false;
-                return;
+
+            const city = cityData[cityIdx];
+            document.getElementById('city-name').innerText = city.name;
+            document.getElementById('city-image').innerHTML = city.image ? `<img src="${city.image}" alt="${city.name}" style="max-width: 200px; max-height: 150px;">` : '';
+            document.getElementById('city-narasi').innerText = `Selamat datang di ${city.name}! Kota ini terkenal dengan budaya dan musiknya yang unik.`;
+
+            // Tampilkan tantangan (quiz)
+            state.currentQuiz = cityQuestions[cityIdx];
+            if (state.currentQuiz) {
+                document.getElementById('challenge-content').innerHTML = `
+                    <p>${state.currentQuiz.q}</p>
+                    ${state.currentQuiz.a.map((opt, idx) => `<button class="btn-gold" onclick="checkCityAnswer(${idx})">${opt}</button>`).join('')}
+                `;
+            } else {
+                document.getElementById('challenge-content').innerHTML = '<p>Tidak ada tantangan untuk kota ini.</p>';
             }
 
-            const overlay = document.getElementById('quiz-overlay');
-            document.getElementById('quiz-header').innerText = `TANTANGAN MUSIK: ${cityData[state.idx].name}`;
-            document.getElementById('quiz-question').innerText = state.currentQuiz.q;
-            
-            document.getElementById('quiz-feedback-box').classList.remove('show');
-            
-            const container = document.getElementById('quiz-options');
-            container.innerHTML = '';
-            
-            state.currentQuiz.a.forEach((opt, idx) => {
-                const btn = document.createElement('button');
-                btn.className = 'quiz-opt-btn';
-                btn.innerText = opt;
-                btn.onclick = () => checkAns(idx === state.currentQuiz.correct);
-                container.appendChild(btn);
-            });
-            
-            // pause auto-walk while quiz is shown
-            state.autoPaused = true;
-            overlay.classList.add('show');
+            document.getElementById('city-overlay').classList.remove('hidden');
         }
 
-        function checkAns(correct) {
-            document.querySelectorAll('.quiz-opt-btn').forEach(b => b.disabled = true);
-            
-            const feedbackBox = document.getElementById('quiz-feedback-box');
-            const icon = document.getElementById('feedback-icon');
-            const title = document.getElementById('feedback-title');
-            const message = document.getElementById('feedback-message');
-            
-            feedbackBox.classList.add('show');
-
+        function checkCityAnswer(selectedIdx) {
+            const correct = selectedIdx === state.currentQuiz.correct;
             if (correct) {
-                playSound(523.25, 0.1);
-                icon.innerText = "✅";
-                title.innerText = "BENAR!";
-                title.style.color = '#22c55e';
-                message.innerText = "Luar biasa! Pengetahuan musikmu sangat luas.";
-                message.style.color = '#667eea';
+                state.score += 10; // Reward poin
+                alert('Benar! Kamu mendapatkan 10 poin.');
             } else {
-                playSound(98, 0.2);
                 state.lives--;
-                icon.innerText = "❌";
-                title.innerText = "SALAH!";
-                title.style.color = '#dc2626';
-                message.innerText = `Jawaban yang benar adalah: ${state.currentQuiz.a[state.currentQuiz.correct]}`;
-                message.style.color = '#dc2626';
-                
-                const board = document.getElementById('board');
-                board.classList.add('shake');
-                setTimeout(() => board.classList.remove('shake'), 400);
+                alert(`Salah! Jawaban benar: ${state.currentQuiz.a[state.currentQuiz.correct]}. Stamina berkurang.`);
             }
+            backToBoard();
+        }
 
-            setTimeout(() => {
-                document.getElementById('quiz-overlay').classList.remove('show');
-                state.isMoving = false;
-                if (state.lives <= 0) {
-                    finish(false);
-                } else if (state.visited.size === cityData.length) {
-                    finish(true);
-                }
-                updateTokenPos();
-                // resume auto if it was running before quiz
-                if (state.autoMode) {
-                    state.autoPaused = false;
-                    if (state.autoTimer) clearTimeout(state.autoTimer);
-                    state.autoTimer = setTimeout(autoStep, 300);
-                }
-                updateControlButtons();
-            }, 2000);
+        function backToBoard() {
+            document.getElementById('city-overlay').classList.add('hidden');
+            state.isMoving = false;
+            if (state.lives <= 0) {
+                finish(false);
+            } else if (state.visited.size === cityData.length) {
+                finish(true);
+            }
+            updateTokenPos();
+            // resume auto if it was running
+            if (state.autoMode) {
+                state.autoPaused = false;
+                if (state.autoTimer) clearTimeout(state.autoTimer);
+                state.autoTimer = setTimeout(autoStep, 300);
+            }
+            updateControlButtons();
         }
 
         function finish(win) {
@@ -1500,13 +1488,16 @@
             
             if (win) {
                 document.getElementById('end-title').innerText = "🏆 MAESTRO NUSANTARA";
-                document.getElementById('end-message').innerText = `Selamat, ${state.playerName}! Kamu telah menjelajahi seluruh simfoni Nusantara.`;
+                document.getElementById('end-message').innerText = `Selamat, ${state.playerName}! Kamu telah menjelajahi seluruh simfoni Nusantara dengan skor ${state.score}.`;
                 document.getElementById('end-title').style.color = '#22c55e';
             } else {
                 document.getElementById('end-title').innerText = "💀 HARMONI TERHENTI";
-                document.getElementById('end-message').innerText = "Stamina habis. Pelajari lagi kekayaan musik Nusantara dan coba lagi!";
+                document.getElementById('end-message').innerText = `Stamina habis. Skor akhir: ${state.score}. Pelajari lagi kekayaan musik Nusantara dan coba lagi!`;
                 document.getElementById('end-title').style.color = '#dc2626';
             }
+            
+            // Save to Firebase
+            window.savePlayerData(state.playerName);
             
             overlay.classList.add('show');
         }
@@ -1573,7 +1564,7 @@
                 if (!state.visited.has(state.idx)) {
                     state.visited.add(state.idx);
                     state.autoPaused = true;
-                    showQuiz();
+                    showCity(state.idx);
                 } else {
                     state.isMoving = false;
                     if (state.autoMode && !state.autoPaused && state.idx !== lastIdx) {
